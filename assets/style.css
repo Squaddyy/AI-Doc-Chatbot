@@ -30,12 +30,14 @@ h2, h3 {
     padding: 20px;
 }
 
-/* Style the text input box */
-[data-testid="stTextInput"] > div > input {
-    border: 2px solid #007BFF;
+/* --- THIS IS THE FIX --- */
+/* Style the text input box with a simpler selector */
+[data-testid="stTextInput"] input {
+    border: 1px solid #aaa; /* A standard, visible border */
     border-radius: 8px;
     background-color: #ffffff;
     color: #333;
+    padding: 8px; /* Added padding */
 }
 
 /* Style info/success/warning boxes */

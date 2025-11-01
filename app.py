@@ -77,8 +77,9 @@ def create_vector_store(_retriever, text):
         return None, None
         
     try:
+        # Split text into chunks (e.g., by paragraph)
         chunks = [para for para in text.split('\n') if para.strip()]
-        if not chunks:
+        if not chunks: # Fallback chunking
             chunks = [text[i:i+500] for i in range(0, len(text), 500)] 
         
         st.info(f"Indexing {len(chunks)} text chunks for the AI...")
@@ -94,10 +95,10 @@ def create_vector_store(_retriever, text):
         return None, None
 
 def search_vector_store(query, _retriever, index, chunks):
-    """Searches the vector store for the most relevant text chunks."""
+    """Searches the vector store and returns a combined context."""
     try:
         query_embedding = _retriever.encode([query])
-        k = 3
+        k = 3 # Retrieve top 3 relevant chunks
         distances, indices = index.search(np.array(query_embedding).astype('float32'), k)
         relevant_chunks = [chunks[i] for i in indices[0]]
         
@@ -114,6 +115,7 @@ st.subheader("Upload a PDF and ask it questions.")
 # 1. File Uploader
 uploaded_file = st.file_uploader("Upload your PDF document", type=["pdf"])
 
+# Initialize session state
 if 'doc_text' not in st.session_state:
     st.session_state.doc_text = None
 if 'vector_index' not in st.session_state:
@@ -127,10 +129,12 @@ if uploaded_file is not None:
         st.session_state.doc_text = extract_text_from_pdf(uploaded_file)
         
         if st.session_state.doc_text:
+            # Create vector store only if text was extracted
             st.session_state.vector_index, st.session_state.text_chunks = create_vector_store(retriever, st.session_state.doc_text)
         else:
             st.error("Could not extract text from the PDF.")
 else:
+    # Clear state if file is removed
     st.session_state.doc_text = None
     st.session_state.vector_index = None
     st.session_state.text_chunks = None
@@ -139,7 +143,7 @@ else:
 st.subheader("Chat with your document:")
 
 if st.session_state.vector_index is not None and generator is not None:
-    query = st.text_input("Ask a question about your document:", label_visibility="collapsed")
+    query = st.text_input("Ask a question about your document:")
     
     if query:
         # 1. RETRIEVAL
