@@ -4,7 +4,7 @@ import io
 from sentence_transformers import SentenceTransformer
 import faiss
 import numpy as np
-import requests # --- NEW IMPORT ---
+import requests
 
 st.set_page_config(layout="wide")
 
@@ -38,16 +38,14 @@ def load_embedding_model():
 # Load the retrieval model
 retriever = load_embedding_model()
 
-# --- NEW: Hugging Face API Function ---
+# --- Hugging Face API Function ---
 
 def call_hf_api(question, context):
     """Calls a generative model on the Hugging Face API."""
     
-    # --- THIS IS THE FIX ---
-    # We are using a different, reliable, free-tier model
-    API_URL = "https://api-inference.huggingface.co/models/HuggingFaceH4/zephyr-7b-beta"
+    # --- FIX 1: Using a more stable text-generation model ---
+    API_URL = "https://api-inference.huggingface.co/models/google/flan-t5-large"
     
-    # Get the secret API key
     try:
         hf_token = st.secrets["HF_TOKEN"]
     except KeyError:
@@ -68,12 +66,12 @@ def call_hf_api(question, context):
     Answer:
     """
     
+    # --- FIX 2: Simplified payload for this model type ---
     payload = {
         "inputs": prompt,
         "parameters": {
             "max_new_tokens": 250,
-            "temperature": 0.7,
-            "return_full_text": False
+            "temperature": 0.7
         }
     }
 
@@ -85,7 +83,6 @@ def call_hf_api(question, context):
         return result[0]['generated_text']
         
     except requests.exceptions.RequestException as e:
-        # Check for specific 503 Service Unavailable (model loading)
         if response.status_code == 503:
             st.error("The AI model is loading. Please try again in 20-30 seconds.")
         else:
