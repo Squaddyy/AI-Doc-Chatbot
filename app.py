@@ -4,7 +4,7 @@ import io
 from sentence_transformers import SentenceTransformer
 import faiss
 import numpy as np
-from transformers import pipeline
+import requests # --- NEW IMPORT ---
 
 st.set_page_config(layout="wide")
 
@@ -35,21 +35,63 @@ def load_embedding_model():
         st.error(f"Error loading embedding model: {e}")
         return None
 
-@st.cache_resource
-def load_qa_model():
-    """Loads the QA model (for generation)."""
-    st.info("Loading AI 'Answer' model...")
+# Load the retrieval model
+retriever = load_embedding_model()
+
+# --- NEW: Hugging Face API Function ---
+
+def call_hf_api(question, context):
+    """Calls a generative model on the Hugging Face API."""
+    
+    # We'll use a powerful, free model. Mistral-7B is excellent for this.
+    API_URL = "https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.1"
+    
+    # Get the secret API key
     try:
-        qa_pipeline = pipeline("question-answering", model="distilbert-base-cased-distilled-squad")
-        st.success("AI 'Answer' model loaded!")
-        return qa_pipeline
-    except Exception as e:
-        st.error(f"Error loading QA model: {e}")
+        hf_token = st.secrets["HF_TOKEN"]
+    except KeyError:
+        st.error("HF_TOKEN secret not found. Please add it to your Streamlit secrets.")
+        return None
+        
+    headers = {"Authorization": f"Bearer {hf_token}"}
+    
+    # Create a prompt for the generative model
+    # This instructs the AI to *only* use the context
+    prompt = f"""
+    Use the following pieces of context to answer the question at the end.
+    If you don't know the answer, just say that you don't know, don't try to make up an answer.
+    
+    Context: {context}
+    
+    Question: {question}
+    
+    Answer:
+    """
+    
+    payload = {
+        "inputs": prompt,
+        "parameters": {
+            "max_new_tokens": 250,  # Limit the length of the answer
+            "temperature": 0.7,
+            "return_full_text": False # We only want the generated answer
+        }
+    }
+
+    try:
+        response = requests.post(API_URL, headers=headers, json=payload)
+        response.raise_for_status() # Raise error for bad responses (4xx, 5xx)
+        
+        # The API returns a list, we take the first item's generated_text
+        result = response.json()
+        return result[0]['generated_text']
+        
+    except requests.exceptions.RequestException as e:
+        st.error(f"API request failed: {e}")
+        return None
+    except (KeyError, IndexError):
+        st.error("Failed to parse API response.")
         return None
 
-# Load the models
-retriever = load_embedding_model()
-generator = load_qa_model()
 
 # --- Helper Functions ---
 
@@ -75,21 +117,15 @@ def create_vector_store(_retriever, text):
     """Creates a FAISS vector store from the text."""
     if not text or _retriever is None:
         return None, None
-        
     try:
-        # Split text into chunks (e.g., by paragraph)
         chunks = [para for para in text.split('\n') if para.strip()]
-        if not chunks: # Fallback chunking
-            chunks = [text[i:i+500] for i in range(0, len(text), 500)] 
-        
+        if not chunks: _ = [text[i:i+500] for i in range(0, len(text), 500)] 
         st.info(f"Indexing {len(chunks)} text chunks for the AI...")
         embeddings = _retriever.encode(chunks)
         index = faiss.IndexFlatL2(embeddings.shape[1])
         index.add(np.array(embeddings).astype('float32'))
         st.success("Document has been 'read' and indexed by the AI.")
-        
         return index, chunks
-        
     except Exception as e:
         st.error(f"Error creating vector store: {e}")
         return None, None
@@ -98,10 +134,9 @@ def search_vector_store(query, _retriever, index, chunks):
     """Searches the vector store and returns a combined context."""
     try:
         query_embedding = _retriever.encode([query])
-        k = 3 # Retrieve top 3 relevant chunks
+        k = 3
         distances, indices = index.search(np.array(query_embedding).astype('float32'), k)
         relevant_chunks = [chunks[i] for i in indices[0]]
-        
         context = " ".join(relevant_chunks)
         return context
     except Exception as e:
@@ -112,29 +147,19 @@ def search_vector_store(query, _retriever, index, chunks):
 st.title("🤖 AI Document Chatbot")
 st.subheader("Upload a PDF and ask it questions.")
 
-# 1. File Uploader
 uploaded_file = st.file_uploader("Upload your PDF document", type=["pdf"])
 
-# Initialize session state
-if 'doc_text' not in st.session_state:
-    st.session_state.doc_text = None
-if 'vector_index' not in st.session_state:
-    st.session_state.vector_index = None
-if 'text_chunks' not in st.session_state:
-    st.session_state.text_chunks = None
+if 'doc_text' not in st.session_state: st.session_state.doc_text = None
+if 'vector_index' not in st.session_state: st.session_state.vector_index = None
+if 'text_chunks' not in st.session_state: st.session_state.text_chunks = None
 
 if uploaded_file is not None:
-    # Process file *once*
     if st.session_state.doc_text is None:
         st.session_state.doc_text = extract_text_from_pdf(uploaded_file)
-        
         if st.session_state.doc_text:
-            # Create vector store only if text was extracted
             st.session_state.vector_index, st.session_state.text_chunks = create_vector_store(retriever, st.session_state.doc_text)
-        else:
-            st.error("Could not extract text from the PDF.")
+        else: st.error("Could not extract text from the PDF.")
 else:
-    # Clear state if file is removed
     st.session_state.doc_text = None
     st.session_state.vector_index = None
     st.session_state.text_chunks = None
@@ -142,7 +167,7 @@ else:
 # 3. Chat Interface
 st.subheader("Chat with your document:")
 
-if st.session_state.vector_index is not None and generator is not None:
+if st.session_state.vector_index is not None:
     query = st.text_input("Ask a question about your document:")
     
     if query:
@@ -151,22 +176,21 @@ if st.session_state.vector_index is not None and generator is not None:
         context = search_vector_store(query, retriever, st.session_state.vector_index, st.session_state.text_chunks)
         
         if context:
-            # 2. GENERATION
+            # 2. GENERATION (Calling the API)
             st.info("Generating your answer...")
             with st.spinner("AI is thinking..."):
-                result = generator(question=query, context=context)
-                answer = result["answer"]
+                answer = call_hf_api(query, context)
                 
-                st.subheader("AI Answer:")
-                st.success(f"**{answer}**")
-                
-                with st.expander("Show source context"):
-                    st.markdown(f"> {context}")
+                if answer:
+                    st.subheader("AI Answer:")
+                    st.success(f"**{answer.strip()}**")
+                    with st.expander("Show source context"):
+                        st.markdown(f"> {context}")
+                else:
+                    st.error("The generative AI model failed to return an answer.")
             
         else:
             st.warning("Couldn't find an answer in the document.")
 else:
-    if retriever is None or generator is None:
-        st.error("AI models failed to load. Please check the console.")
-    else:
-        st.info("Please upload a PDF to enable the chat.")
+    if retriever is None: st.error("Retrieval model failed to load.")
+    else: st.info("Please upload a PDF to enable the chat.")
