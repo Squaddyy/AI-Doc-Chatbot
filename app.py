@@ -43,7 +43,7 @@ retriever = load_embedding_model()
 def call_hf_api(question, context):
     """
     Calls a generative model (Llama 3) via the HF Inference Providers API.
-    Uses the OpenAI-compatible client you found.
+    Uses the OpenAI-compatible client.
     """
     try:
         hf_token = st.secrets["HF_TOKEN"]
@@ -51,14 +51,11 @@ def call_hf_api(question, context):
         st.error("HF_TOKEN secret not found. Please add it to your Streamlit secrets.")
         return None
         
-    # --- THIS IS THE NEW, CORRECT CLIENT ---
-    # Based on your screenshot
     client = OpenAI(
         base_url="https://router.huggingface.co/v1",
         api_key=hf_token,
     )
     
-    # We create the prompt using the Llama 3 chat format
     prompt_messages = [
         {
             "role": "system",
@@ -72,9 +69,9 @@ def call_hf_api(question, context):
 
     try:
         completion = client.chat.completions.create(
-            # --- THIS IS THE NEW, CORRECT MODEL NAME ---
-            # We'll use the one you tested, not the newer one, just to be safe
-            model="meta-llama/Llama-3-8B-Instruct",
+            # --- THIS IS THE FIX ---
+            # Using the exact model name from your screenshot
+            model="meta-llama/Llama-3.1-8B-Instruct:novita",
             messages=prompt_messages,
             temperature=0.7,
             max_tokens=250
