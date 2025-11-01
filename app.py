@@ -38,17 +38,16 @@ def load_embedding_model():
 # Load the retrieval model
 retriever = load_embedding_model()
 
-# --- Hugging Face API Function (FIXED FOR GOOD) ---
+# --- Hugging Face API Function (FIXED with LLAMA 3) ---
 
 def call_hf_api(question, context):
     """
-    Calls a stable 'question-answering' model on the Hugging Face API.
-    We are using the model you confirmed is working.
+    Calls a generative model (Llama 3) on the Hugging Face API.
+    This is the model you successfully tested.
     """
     
-    # --- THIS IS THE FIX ---
-    # Using the stable URL you just tested.
-    API_URL = "https://api-inference.huggingface.co/models/deepset/roberta-base-squad2"
+    # --- THIS IS THE WORKING URL ---
+    API_URL = "https://api-inference.huggingface.co/models/meta-llama/Meta-Llama-3-8B-Instruct"
     
     try:
         hf_token = st.secrets["HF_TOKEN"]
@@ -58,11 +57,23 @@ def call_hf_api(question, context):
         
     headers = {"Authorization": f"Bearer {hf_token}"}
     
-    # The payload for QA models.
+    # --- This is the special Llama 3 prompt format you tested ---
+    prompt = f"""
+    <|begin_of_text|><|start_header_id|>system<|end_header_id|>
+    You are a helpful assistant. Answer the user's question based *only* on the provided context. If the answer is not in the context, say "I could not find the answer in the document."
+    <|eot_id|><|start_header_id|>user<|end_header_id|>
+    Context: {context}
+    
+    Question: {question}
+    <|eot_id|><|start_header_id|>assistant<|end_header_id|>
+    """
+    
     payload = {
-        "inputs": {
-            "question": question,
-            "context": context
+        "inputs": prompt,
+        "parameters": {
+            "max_new_tokens": 250,
+            "temperature": 0.7,
+            "return_full_text": False # We only want the AI's response
         }
     }
 
@@ -72,11 +83,17 @@ def call_hf_api(question, context):
         
         result = response.json()
         
-        return result.get("answer", "No answer found in context.")
+        # Get the generated text
+        answer = result[0]['generated_text']
+        
+        # Clean up the answer (remove potential eot_id tags)
+        answer = answer.split("<|eot_id|>")[0].strip()
+        
+        return answer
         
     except requests.exceptions.RequestException as e:
         if response and response.status_code == 503:
-            st.error("The AI model (roberta) is loading. Please try again in 20-30 seconds.")
+            st.error("The AI model (Llama 3) is loading. This is a one-time setup on Hugging Face's side. Please ask your question again in 20-30 seconds.")
         else:
             st.error(f"API request failed: {e}")
         return None
@@ -126,7 +143,7 @@ def search_vector_store(query, _retriever, index, chunks):
     """Searches the vector store and returns a combined context."""
     try:
         query_embedding = _retriever.encode([query])
-        k = 3
+        k = 3 # Get top 3 chunks
         distances, indices = index.search(np.array(query_embedding).astype('float32'), k)
         relevant_chunks = [chunks[i] for i in indices[0]]
         context = " ".join(relevant_chunks)
@@ -168,8 +185,8 @@ if st.session_state.vector_index is not None:
         context = search_vector_store(query, retriever, st.session_state.vector_index, st.session_state.text_chunks)
         
         if context:
-            # 2. GENERATION (Calling the QA API)
-            st.info("Generating your answer...")
+            # 2. GENERATION (Calling Llama 3 API)
+            st.info("Generating your answer with Llama 3...")
             with st.spinner("AI is thinking..."):
                 answer = call_hf_api(query, context)
                 
