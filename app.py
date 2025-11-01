@@ -202,4 +202,4 @@ if st.session_state.vector_index is not None:
             st.warning("Couldn't find an answer in the document.")
 else:
     if retriever is None: st.error("Retrieval model failed to load.")
-    else: st.info("Please upload a PDF to enable the chat.")
+    else: st.info("Please upload a PDF to enable the chat.")# Forcing a re-deploy
