@@ -43,8 +43,9 @@ retriever = load_embedding_model()
 def call_hf_api(question, context):
     """Calls a generative model on the Hugging Face API."""
     
-    # We'll use a powerful, free model. Mistral-7B is excellent for this.
-    API_URL = "https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.1"
+    # --- THIS IS THE FIX ---
+    # We are using a different, reliable, free-tier model
+    API_URL = "https://api-inference.huggingface.co/models/HuggingFaceH4/zephyr-7b-beta"
     
     # Get the secret API key
     try:
@@ -56,7 +57,6 @@ def call_hf_api(question, context):
     headers = {"Authorization": f"Bearer {hf_token}"}
     
     # Create a prompt for the generative model
-    # This instructs the AI to *only* use the context
     prompt = f"""
     Use the following pieces of context to answer the question at the end.
     If you don't know the answer, just say that you don't know, don't try to make up an answer.
@@ -71,22 +71,25 @@ def call_hf_api(question, context):
     payload = {
         "inputs": prompt,
         "parameters": {
-            "max_new_tokens": 250,  # Limit the length of the answer
+            "max_new_tokens": 250,
             "temperature": 0.7,
-            "return_full_text": False # We only want the generated answer
+            "return_full_text": False
         }
     }
 
     try:
         response = requests.post(API_URL, headers=headers, json=payload)
-        response.raise_for_status() # Raise error for bad responses (4xx, 5xx)
+        response.raise_for_status() 
         
-        # The API returns a list, we take the first item's generated_text
         result = response.json()
         return result[0]['generated_text']
         
     except requests.exceptions.RequestException as e:
-        st.error(f"API request failed: {e}")
+        # Check for specific 503 Service Unavailable (model loading)
+        if response.status_code == 503:
+            st.error("The AI model is loading. Please try again in 20-30 seconds.")
+        else:
+            st.error(f"API request failed: {e}")
         return None
     except (KeyError, IndexError):
         st.error("Failed to parse API response.")
