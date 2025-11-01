@@ -1,6 +1,6 @@
 # 🤖 AI Document Chatbot (RAG)
 
-**➡️ Live Demo:** [**Click here to try the app!**](YOUR_APP_URL_HERE)
+**➡️ Live Demo:** [**Click here to try the app!**](https://sarthakaidocument.streamlit.app/)
 
 A web application built with Streamlit that allows users to chat with their PDF documents. This project implements a complete **Retrieval-Augmented Generation (RAG)** pipeline from scratch.
 
