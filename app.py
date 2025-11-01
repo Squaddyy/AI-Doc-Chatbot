@@ -38,14 +38,16 @@ def load_embedding_model():
 # Load the retrieval model
 retriever = load_embedding_model()
 
-# --- Hugging Face API Function ---
+# --- Hugging Face API Function (FIXED) ---
 
 def call_hf_api(question, context):
-    """Calls a generative model on the Hugging Face API."""
+    """
+    Calls a stable 'question-answering' model on the Hugging Face API.
+    This is an extractive model, just like our original local version.
+    """
     
-    # --- FIX 4: Using the most stable, default model: gpt2 ---
-    # This model is not as "smart" but is almost always available.
-    API_URL = "https://api-inference.huggingface.co/models/gpt2"
+    # --- FIX 1: Using the stable 'question-answering' endpoint ---
+    API_URL = "https://api-inference.huggingface.co/models/distilbert-base-cased-distilled-squad"
     
     try:
         hf_token = st.secrets["HF_TOKEN"]
@@ -55,21 +57,12 @@ def call_hf_api(question, context):
         
     headers = {"Authorization": f"Bearer {hf_token}"}
     
-    # We create a simple prompt for gpt2
-    prompt = f"""
-    Based on this context: '{context}'
-    
-    Answer this question: '{question}'
-    
-    Answer:
-    """
-    
+    # --- FIX 2: The payload for QA models is different ---
+    # We send the question and context separately.
     payload = {
-        "inputs": prompt,
-        "parameters": {
-            "max_new_tokens": 100, # gpt2 is not good at long answers
-            "temperature": 0.7,
-            "return_full_text": False # We only want the generated part
+        "inputs": {
+            "question": question,
+            "context": context
         }
     }
 
@@ -79,18 +72,12 @@ def call_hf_api(question, context):
         
         result = response.json()
         
-        # We need to clean the answer, as gpt2 might add junk
-        answer = result[0]['generated_text']
-        # Remove any leftover prompt text
-        answer = answer.replace(prompt, "").strip()
-        # Remove anything after a newline (it tends to babble)
-        answer = answer.split('\n')[0]
-        
-        return answer
+        # The answer is directly in the 'answer' key
+        return result.get("answer", "No answer found in context.")
         
     except requests.exceptions.RequestException as e:
-        if response.status_code == 503:
-            st.error("The AI model (gpt2) is loading. This is a one-time setup on Hugging Face's side. Please ask your question again in 20-30 seconds.")
+        if response and response.status_code == 503:
+            st.error("The AI model (distilbert) is loading. Please try again in 20-30 seconds.")
         else:
             st.error(f"API request failed: {e}")
         return None
@@ -182,7 +169,7 @@ if st.session_state.vector_index is not None:
         context = search_vector_store(query, retriever, st.session_state.vector_index, st.session_state.text_chunks)
         
         if context:
-            # 2. GENERATION (Calling the API)
+            # 2. GENERATION (Calling the QA API)
             st.info("Generating your answer...")
             with st.spinner("AI is thinking..."):
                 answer = call_hf_api(query, context)
