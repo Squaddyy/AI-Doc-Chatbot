@@ -4,7 +4,7 @@ import io
 from sentence_transformers import SentenceTransformer
 import faiss
 import numpy as np
-import requests
+from openai import OpenAI  # --- NEW IMPORT ---
 
 st.set_page_config(layout="wide")
 
@@ -38,71 +38,59 @@ def load_embedding_model():
 # Load the retrieval model
 retriever = load_embedding_model()
 
-# --- Hugging Face API Function (FIXED with LLAMA 3) ---
+# --- Hugging Face API Function (FIXED with OpenAI Client) ---
 
 def call_hf_api(question, context):
     """
-    Calls a generative model (Llama 3) on the Hugging Face API.
-    This is the model you successfully tested.
+    Calls a generative model (Llama 3) via the HF Inference Providers API.
+    Uses the OpenAI-compatible client you found.
     """
-    
-    # --- THIS IS THE WORKING URL ---
-    API_URL = "https://api-inference.huggingface.co/models/meta-llama/Meta-Llama-3-8B-Instruct"
-    
     try:
         hf_token = st.secrets["HF_TOKEN"]
     except KeyError:
         st.error("HF_TOKEN secret not found. Please add it to your Streamlit secrets.")
         return None
         
-    headers = {"Authorization": f"Bearer {hf_token}"}
+    # --- THIS IS THE NEW, CORRECT CLIENT ---
+    # Based on your screenshot
+    client = OpenAI(
+        base_url="https://router.huggingface.co/v1",
+        api_key=hf_token,
+    )
     
-    # --- This is the special Llama 3 prompt format you tested ---
-    prompt = f"""
-    <|begin_of_text|><|start_header_id|>system<|end_header_id|>
-    You are a helpful assistant. Answer the user's question based *only* on the provided context. If the answer is not in the context, say "I could not find the answer in the document."
-    <|eot_id|><|start_header_id|>user<|end_header_id|>
-    Context: {context}
-    
-    Question: {question}
-    <|eot_id|><|start_header_id|>assistant<|end_header_id|>
-    """
-    
-    payload = {
-        "inputs": prompt,
-        "parameters": {
-            "max_new_tokens": 250,
-            "temperature": 0.7,
-            "return_full_text": False # We only want the AI's response
+    # We create the prompt using the Llama 3 chat format
+    prompt_messages = [
+        {
+            "role": "system",
+            "content": "You are a helpful assistant. Answer the user's question based *only* on the provided context. If the answer is not in the context, say 'I could not find the answer in the document.'"
+        },
+        {
+            "role": "user",
+            "content": f"Context: {context}\n\nQuestion: {question}"
         }
-    }
+    ]
 
     try:
-        response = requests.post(API_URL, headers=headers, json=payload)
-        response.raise_for_status() 
+        completion = client.chat.completions.create(
+            # --- THIS IS THE NEW, CORRECT MODEL NAME ---
+            # We'll use the one you tested, not the newer one, just to be safe
+            model="meta-llama/Llama-3-8B-Instruct",
+            messages=prompt_messages,
+            temperature=0.7,
+            max_tokens=250
+        )
         
-        result = response.json()
+        answer = completion.choices[0].message.content
+        return answer.strip()
         
-        # Get the generated text
-        answer = result[0]['generated_text']
-        
-        # Clean up the answer (remove potential eot_id tags)
-        answer = answer.split("<|eot_id|>")[0].strip()
-        
-        return answer
-        
-    except requests.exceptions.RequestException as e:
-        if response and response.status_code == 503:
-            st.error("The AI model (Llama 3) is loading. This is a one-time setup on Hugging Face's side. Please ask your question again in 20-30 seconds.")
-        else:
-            st.error(f"API request failed: {e}")
-        return None
-    except (KeyError, IndexError):
-        st.error("Failed to parse API response.")
+    except Exception as e:
+        st.error(f"API request failed: {e}")
+        if "503" in str(e):
+            st.error("The AI model (Llama 3) is loading on the provider's side. This is a one-time setup. Please try again in 30 seconds.")
         return None
 
 
-# --- Helper Functions ---
+# --- Helper Functions (UPGRADED) ---
 
 def extract_text_from_pdf(pdf_file):
     """Extracts text from an uploaded PDF file."""
@@ -126,15 +114,27 @@ def create_vector_store(_retriever, text):
     """Creates a FAISS vector store from the text."""
     if not text or _retriever is None:
         return None, None
+        
     try:
-        chunks = [para for para in text.split('\n') if para.strip()]
-        if not chunks: chunks = [text[i:i+500] for i in range(0, len(text), 500)] 
-        st.info(f"Indexing {len(chunks)} text chunks for the AI...")
+        # Smart chunking
+        chunk_size = 1000
+        chunk_overlap = 200
+        
+        chunks = []
+        start = 0
+        while start < len(text):
+            end = start + chunk_size
+            chunks.append(text[start:end])
+            start += chunk_size - chunk_overlap
+        
+        st.info(f"Indexing {len(chunks)} new text chunks for the AI...")
         embeddings = _retriever.encode(chunks)
         index = faiss.IndexFlatL2(embeddings.shape[1])
         index.add(np.array(embeddings).astype('float32'))
         st.success("Document has been 'read' and indexed by the AI.")
+        
         return index, chunks
+        
     except Exception as e:
         st.error(f"Error creating vector store: {e}")
         return None, None
@@ -143,7 +143,7 @@ def search_vector_store(query, _retriever, index, chunks):
     """Searches the vector store and returns a combined context."""
     try:
         query_embedding = _retriever.encode([query])
-        k = 3 # Get top 3 chunks
+        k = 5 # Retrieve top 5 chunks
         distances, indices = index.search(np.array(query_embedding).astype('float32'), k)
         relevant_chunks = [chunks[i] for i in indices[0]]
         context = " ".join(relevant_chunks)
@@ -180,19 +180,19 @@ if st.session_state.vector_index is not None:
     query = st.text_input("Ask a question about your document:")
     
     if query:
-        # 1. RETRIEVAL
+        # 1. RETRIEVAL (Now smarter)
         st.info("Finding relevant information...")
         context = search_vector_store(query, retriever, st.session_state.vector_index, st.session_state.text_chunks)
         
         if context:
-            # 2. GENERATION (Calling Llama 3 API)
+            # 2. GENERATION (Calling Llama 3 via new client)
             st.info("Generating your answer with Llama 3...")
             with st.spinner("AI is thinking..."):
                 answer = call_hf_api(query, context)
                 
                 if answer:
                     st.subheader("AI Answer:")
-                    st.success(f"**{answer.strip()}**")
+                    st.success(f"**{answer}**")
                     with st.expander("Show source context"):
                         st.markdown(f"> {context}")
                 else:
@@ -202,4 +202,4 @@ if st.session_state.vector_index is not None:
             st.warning("Couldn't find an answer in the document.")
 else:
     if retriever is None: st.error("Retrieval model failed to load.")
-    else: st.info("Please upload a PDF to enable the chat.")# Forcing a re-deploy
+    else: st.info("Please upload a PDF to enable the chat.")

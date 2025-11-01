@@ -4,4 +4,4 @@ torch
 PyMuPDF
 sentence-transformers
 faiss-cpu
-requests
+openai
