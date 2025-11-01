@@ -4,9 +4,22 @@ import io
 from sentence_transformers import SentenceTransformer
 import faiss
 import numpy as np
-from transformers import pipeline  # --- NEW IMPORT ---
+from transformers import pipeline
 
 st.set_page_config(layout="wide")
+
+# --- CSS Styling ---
+def load_css(file_name):
+    """Loads a local CSS file."""
+    try:
+        with open(file_name, "r") as f:
+            st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
+    except FileNotFoundError:
+        st.error(f"CSS file not found: {file_name}")
+
+# Load custom CSS
+load_css("assets/style.css")
+
 
 # --- AI Model Caching ---
 
@@ -27,7 +40,6 @@ def load_qa_model():
     """Loads the QA model (for generation)."""
     st.info("Loading AI 'Answer' model...")
     try:
-        # Load a model specifically for Question Answering
         qa_pipeline = pipeline("question-answering", model="distilbert-base-cased-distilled-squad")
         st.success("AI 'Answer' model loaded!")
         return qa_pipeline
@@ -58,8 +70,8 @@ def extract_text_from_pdf(pdf_file):
         st.error(f"Error reading PDF: {e}")
         return None
 
-@st.cache_resource(hash_funcs={type(retriever): id}) # Handle caching for the model object
-def create_vector_store(_retriever, text): # Pass retriever as argument
+@st.cache_resource(hash_funcs={type(retriever): id}) 
+def create_vector_store(_retriever, text): 
     """Creates a FAISS vector store from the text."""
     if not text or _retriever is None:
         return None, None
@@ -89,8 +101,6 @@ def search_vector_store(query, _retriever, index, chunks):
         distances, indices = index.search(np.array(query_embedding).astype('float32'), k)
         relevant_chunks = [chunks[i] for i in indices[0]]
         
-        # --- THIS IS THE KEY ---
-        # Combine the relevant chunks into a single "context"
         context = " ".join(relevant_chunks)
         return context
     except Exception as e:
@@ -99,6 +109,7 @@ def search_vector_store(query, _retriever, index, chunks):
 
 # --- Main App UI ---
 st.title("🤖 AI Document Chatbot")
+st.subheader("Upload a PDF and ask it questions.")
 
 # 1. File Uploader
 uploaded_file = st.file_uploader("Upload your PDF document", type=["pdf"])
@@ -128,7 +139,7 @@ else:
 st.subheader("Chat with your document:")
 
 if st.session_state.vector_index is not None and generator is not None:
-    query = st.text_input("Ask a question about your document:")
+    query = st.text_input("Ask a question about your document:", label_visibility="collapsed")
     
     if query:
         # 1. RETRIEVAL
@@ -145,7 +156,6 @@ if st.session_state.vector_index is not None and generator is not None:
                 st.subheader("AI Answer:")
                 st.success(f"**{answer}**")
                 
-                # Optionally, show the source
                 with st.expander("Show source context"):
                     st.markdown(f"> {context}")
             

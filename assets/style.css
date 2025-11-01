@@ -1,0 +1,57 @@
+/* --- General Page Style --- */
+body {
+    background-color: #f0f2f6; /* Light gray background */
+}
+
+/* --- Main App Container --- */
+[data-testid="stAppViewContainer"] {
+    background-color: #f0f2f6;
+}
+
+/* --- Headers and Titles --- */
+h1 {
+    color: #31333F; /* Darker title color */
+    font-size: 2.5em;
+}
+
+h2, h3 {
+    color: #4A4A4A; /* Slightly lighter header color */
+    border-bottom: 2px solid #007BFF;
+    padding-bottom: 5px;
+}
+
+/* --- Streamlit Widgets --- */
+
+/* Style the file uploader */
+[data-testid="stFileUploader"] {
+    border: 2px dashed #007BFF;
+    border-radius: 10px;
+    background-color: #ffffff;
+    padding: 20px;
+}
+
+/* Style the text input box */
+[data-testid="stTextInput"] > div > input {
+    border: 2px solid #007BFF;
+    border-radius: 8px;
+    background-color: #ffffff;
+    color: #333;
+}
+
+/* Style info/success/warning boxes */
+[data-testid="stAlert"] {
+    border-radius: 8px;
+    border: none;
+}
+
+/* Style the "Source Context" expander */
+[data-testid="stExpander"] {
+    border-radius: 8px;
+    border: 1px solid #dcdcdc;
+    background-color: #fafafa;
+}
+
+[data-testid="stExpander"] summary {
+    font-weight: bold;
+    color: #007BFF;
+}
