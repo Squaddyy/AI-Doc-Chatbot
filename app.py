@@ -38,16 +38,17 @@ def load_embedding_model():
 # Load the retrieval model
 retriever = load_embedding_model()
 
-# --- Hugging Face API Function (FIXED) ---
+# --- Hugging Face API Function (FIXED FOR GOOD) ---
 
 def call_hf_api(question, context):
     """
     Calls a stable 'question-answering' model on the Hugging Face API.
-    This is an extractive model, just like our original local version.
+    We are using the model you confirmed is working.
     """
     
-    # --- FIX 1: Using the stable 'question-answering' endpoint ---
-    API_URL = "https://api-inference.huggingface.co/models/distilbert-base-cased-distilled-squad"
+    # --- THIS IS THE FIX ---
+    # Using the stable URL you just tested.
+    API_URL = "https://api-inference.huggingface.co/models/deepset/roberta-base-squad2"
     
     try:
         hf_token = st.secrets["HF_TOKEN"]
@@ -57,8 +58,7 @@ def call_hf_api(question, context):
         
     headers = {"Authorization": f"Bearer {hf_token}"}
     
-    # --- FIX 2: The payload for QA models is different ---
-    # We send the question and context separately.
+    # The payload for QA models.
     payload = {
         "inputs": {
             "question": question,
@@ -72,12 +72,11 @@ def call_hf_api(question, context):
         
         result = response.json()
         
-        # The answer is directly in the 'answer' key
         return result.get("answer", "No answer found in context.")
         
     except requests.exceptions.RequestException as e:
         if response and response.status_code == 503:
-            st.error("The AI model (distilbert) is loading. Please try again in 20-30 seconds.")
+            st.error("The AI model (roberta) is loading. Please try again in 20-30 seconds.")
         else:
             st.error(f"API request failed: {e}")
         return None
