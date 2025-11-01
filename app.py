@@ -43,8 +43,9 @@ retriever = load_embedding_model()
 def call_hf_api(question, context):
     """Calls a generative model on the Hugging Face API."""
     
-    # --- FIX 1: Using a more stable text-generation model ---
-    API_URL = "https://api-inference.huggingface.co/models/google/flan-t5-large"
+    # --- FIX 4: Using the most stable, default model: gpt2 ---
+    # This model is not as "smart" but is almost always available.
+    API_URL = "https://api-inference.huggingface.co/models/gpt2"
     
     try:
         hf_token = st.secrets["HF_TOKEN"]
@@ -54,24 +55,21 @@ def call_hf_api(question, context):
         
     headers = {"Authorization": f"Bearer {hf_token}"}
     
-    # Create a prompt for the generative model
+    # We create a simple prompt for gpt2
     prompt = f"""
-    Use the following pieces of context to answer the question at the end.
-    If you don't know the answer, just say that you don't know, don't try to make up an answer.
+    Based on this context: '{context}'
     
-    Context: {context}
-    
-    Question: {question}
+    Answer this question: '{question}'
     
     Answer:
     """
     
-    # --- FIX 2: Simplified payload for this model type ---
     payload = {
         "inputs": prompt,
         "parameters": {
-            "max_new_tokens": 250,
-            "temperature": 0.7
+            "max_new_tokens": 100, # gpt2 is not good at long answers
+            "temperature": 0.7,
+            "return_full_text": False # We only want the generated part
         }
     }
 
@@ -80,11 +78,19 @@ def call_hf_api(question, context):
         response.raise_for_status() 
         
         result = response.json()
-        return result[0]['generated_text']
+        
+        # We need to clean the answer, as gpt2 might add junk
+        answer = result[0]['generated_text']
+        # Remove any leftover prompt text
+        answer = answer.replace(prompt, "").strip()
+        # Remove anything after a newline (it tends to babble)
+        answer = answer.split('\n')[0]
+        
+        return answer
         
     except requests.exceptions.RequestException as e:
         if response.status_code == 503:
-            st.error("The AI model is loading. Please try again in 20-30 seconds.")
+            st.error("The AI model (gpt2) is loading. This is a one-time setup on Hugging Face's side. Please ask your question again in 20-30 seconds.")
         else:
             st.error(f"API request failed: {e}")
         return None
@@ -119,7 +125,7 @@ def create_vector_store(_retriever, text):
         return None, None
     try:
         chunks = [para for para in text.split('\n') if para.strip()]
-        if not chunks: _ = [text[i:i+500] for i in range(0, len(text), 500)] 
+        if not chunks: chunks = [text[i:i+500] for i in range(0, len(text), 500)] 
         st.info(f"Indexing {len(chunks)} text chunks for the AI...")
         embeddings = _retriever.encode(chunks)
         index = faiss.IndexFlatL2(embeddings.shape[1])
